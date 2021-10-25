@@ -40,7 +40,6 @@ CREATE TABLE peer
 CREATE TABLE object
 (
     id   VARCHAR(64) NOT NULL,
-    hash VARCHAR(64) NOT NULL,
     size BIGINT      NOT NULL,
 
     CONSTRAINT object_pk PRIMARY KEY (id)

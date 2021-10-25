@@ -13,7 +13,7 @@ use sqlx::postgres::PgPoolOptions;
 use tokio::sync::Mutex;
 use tokio::time::timeout;
 
-use crate::db::schema::{Node, NodeAddr, Peer};
+use crate::db::schema::{Node, NodeAddr, NodeObjectPin, Object, Peer};
 
 mod db;
 
@@ -56,21 +56,33 @@ async fn get_node(addr: &str) -> Option<NodeData> {
 async fn scan_node(data: &Data, node: &NodeData, depth: u8) {
     let prefix = " ".repeat((depth * 4) as usize);
 
-    // match client.pin_ls(None, None).await {
-    //     Ok(v) => {
-    //         for (id, t) in v.keys {
-    //             match client.object_stat(&format!("/ipfs/{}", id)).await {
-    //                 Ok(v) => {
-    //                     println!("{} --> {}: {}", prefix, id, v.data_size);
-    //                 }
-    //                 Err(e) => {
-    //                     println!("{} x-> {}: {}", prefix, id, e);
-    //                 }
-    //             };
-    //         }
-    //     }
-    //     Err(e) => {}
-    // };
+    match node.client.pin_ls(None, None).await {
+        Ok(v) => {
+            for (id, _) in v.keys {
+                match node.client.object_stat(&format!("/ipfs/{}", id)).await {
+                    Ok(v) => {
+                        // println!("{} --> {}: {}", prefix, id, v.data_size);
+
+                        db::model::add_object(&data.db, &Object {
+                            id: id.clone(),
+                            size: v.data_size as i64,
+                        }).await.unwrap();
+
+                        db::model::add_node_object_pin(&data.db, &NodeObjectPin {
+                            id_node: node.info.id.clone(),
+                            id_object: id.clone(),
+                        }).await.unwrap();
+                    }
+                    Err(e) => {
+                        println!("{} x-> {}: {:?}", prefix, id, e);
+                    }
+                };
+            }
+        }
+        Err(e) => {
+            println!("{} x-> {:?}", prefix, e);
+        }
+    };
 
     let peers = match node.client.swarm_peers().await {
         Ok(v) => v,
@@ -133,7 +145,10 @@ async fn scan_node(data: &Data, node: &NodeData, depth: u8) {
                 // Use resolved node ID here instead of the ID from `peer.peer`
                 save_public_node(&data, &v.info.id, &v.addr).await;
                 save_peer(&data, &node.info.id, &v.info.id).await;
-                scan_node(data, &v, depth + 1).await;
+
+                if depth < 32 {
+                    scan_node(data, &v, depth + 1).await;
+                }
             }
         }
     }

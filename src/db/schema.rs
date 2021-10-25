@@ -19,7 +19,6 @@ pub struct Peer {
 
 pub struct Object {
     pub id: String,
-    pub hash: String,
     pub size: i64,
 }
 

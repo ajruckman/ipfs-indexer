@@ -1,6 +1,6 @@
 use sqlx::{Pool, Postgres, query};
 
-use crate::db::schema::{Node, NodeAddr, Peer};
+use crate::db::schema::{Node, NodeAddr, NodeObjectPin, Object, Peer};
 
 pub async fn add_node(
     conn: &Pool<Postgres>,
@@ -62,6 +62,34 @@ pub async fn add_peer(
             VALUES ($1, $2, TRUE)
             ON CONFLICT ON CONSTRAINT peer_pk DO UPDATE SET active=TRUE",
         peer.id_left, peer.id_right)
+        .execute(conn)
+        .await?;
+
+    Ok(())
+}
+
+pub async fn add_object(
+    conn: &Pool<Postgres>,
+    object: &Object,
+) -> anyhow::Result<()> {
+    query!("INSERT INTO object (id, size)
+            VALUES ($1, $2)
+            ON CONFLICT ON CONSTRAINT object_pk DO NOTHING",
+        object.id, object.size)
+        .execute(conn)
+        .await?;
+
+    Ok(())
+}
+
+pub async fn add_node_object_pin(
+    conn: &Pool<Postgres>,
+    node_object_pin: &NodeObjectPin,
+) -> anyhow::Result<()> {
+    query!("INSERT INTO node_object_pin (id_node, id_object)
+            VALUES ($1, $2)
+            ON CONFLICT ON CONSTRAINT node_object_pin_pk DO NOTHING",
+        node_object_pin.id_node, node_object_pin.id_object)
         .execute(conn)
         .await?;
 
