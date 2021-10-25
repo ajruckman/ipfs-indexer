@@ -1,0 +1,17 @@
+[package]
+name = "ipfs-explorer"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+reqwest = "0.11"
+ipfs-api-backend-hyper = "0.2"
+tokio = { version = "1.11", features = ["macros", "rt-multi-thread", "time"] }
+regex = "1.5"
+once_cell = "1.8"
+async-recursion = "0.3"
+chrono = "0.4"
+sqlx = { version = "0.5", features = ["runtime-tokio-native-tls", "postgres", "chrono", "json"] }
+anyhow = "1.0"
