@@ -7,6 +7,8 @@ use chrono::Utc;
 use ipfs_api_backend_hyper::{IpfsApi, IpfsClient, TryFromUri};
 use ipfs_api_backend_hyper::response::IdResponse;
 use once_cell::sync::Lazy;
+use rand::seq::SliceRandom;
+use rand::thread_rng;
 use regex::Regex;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
@@ -93,8 +95,10 @@ async fn scan_node(data: &Data, node: &NodeData, depth: u8) {
     };
 
     db::model::deactivate_node_peers(&data.db, &node.info.id).await.unwrap();
+    let mut peers_shuf = peers.peers;
+    peers_shuf.shuffle(&mut thread_rng());
 
-    for peer in peers.peers {
+    for peer in peers_shuf {
         let (p, a) = match MATCH_IP.captures(&peer.addr) {
             None => continue,
             Some(v) => {

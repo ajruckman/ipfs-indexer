@@ -15,3 +15,5 @@ async-recursion = "0.3"
 chrono = "0.4"
 sqlx = { version = "0.5", features = ["runtime-tokio-native-tls", "postgres", "chrono", "json"] }
 anyhow = "1.0"
+rand = "0.8"
+openssl = { version = '0.10', features = ["vendored"] }
