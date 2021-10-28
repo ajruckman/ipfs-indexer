@@ -33,6 +33,11 @@ struct NodeData {
     info: IdResponse,
 }
 
+struct NodeRef {
+    id: String,
+    addr: String,
+}
+
 async fn get_node(addr: &str) -> Option<NodeData> {
     let client = match IpfsClient::from_multiaddr_str(addr) {
         Ok(v) => v,
@@ -188,7 +193,14 @@ async fn scan_node_2(data: Arc<Mutex<Data>>, id: &str, addr: &str) -> anyhow::Re
     let existing = {
         let data_l = data.lock().await;
 
-        db::model::get_node(&data_l.db, id).await?
+        match db::model::get_node(&data_l.db, id).await? {
+            None => None,
+            Some(v) => if v.id == id {
+                Some(v)
+            } else {
+                None
+            }
+        }
     };
 
     // {
@@ -207,9 +219,9 @@ async fn scan_node_2(data: Arc<Mutex<Data>>, id: &str, addr: &str) -> anyhow::Re
 
     match get_node(&public_addr).await {
         None => {
-            println!("  {}", public_addr);
-
             let data_l = data.lock().await;
+
+            println!("  {} [{}]", public_addr, data_l.to_scan_rx.len());
 
             match existing {
                 None => {
@@ -243,6 +255,8 @@ async fn scan_node_2(data: Arc<Mutex<Data>>, id: &str, addr: &str) -> anyhow::Re
                     }
                 }
             }
+
+            Ok(())
         }
         Some(v) => {
             println!("+ {}", public_addr);
@@ -253,7 +267,7 @@ async fn scan_node_2(data: Arc<Mutex<Data>>, id: &str, addr: &str) -> anyhow::Re
                 None => {
                     // This node has never been seen before. Add it.
                     db::model::add_node(&data_l.db, &Node {
-                        id: "".to_string(),
+                        id: id.to_owned(),
                         seen_first: Utc::now(),
                         seen_last: Utc::now(),
                         scan_last: None,
@@ -274,10 +288,10 @@ async fn scan_node_2(data: Arc<Mutex<Data>>, id: &str, addr: &str) -> anyhow::Re
             data_l.to_scan_tx.send(v).await?;
 
             drop(data_l);
+
+            Ok(())
         }
     }
-
-    Ok(())
 }
 
 async fn read_node_objects(data: Arc<Mutex<Data>>, node: &NodeData) {
@@ -326,16 +340,6 @@ async fn read_node_peers(data: Arc<Mutex<Data>>, node: &NodeData) {
         db::model::deactivate_node_peers(&data_l.db, &node.info.id).await.unwrap();
 
         for peer in &peers.peers {
-            db::model::add_peer(&data_l.db, &Peer {
-                id_left: node.info.id.clone(),
-                id_right: peer.peer.clone(),
-            }).await.unwrap();
-
-            db::model::add_node_addr(&data_l.db, &NodeAddr {
-                id_node: peer.peer.clone(),
-                addr: peer.addr.clone(),
-            }).await.unwrap();
-
             let mut seen_l = data_l.seen.lock().await;
 
             if !seen_l.contains(&peer.addr) {
@@ -347,7 +351,36 @@ async fn read_node_peers(data: Arc<Mutex<Data>>, node: &NodeData) {
 
     for peer in &peers_new {
         match scan_node_2(data.clone(), &peer.peer, &peer.addr).await {
-            Ok(()) => {}
+            Ok(v) => {
+                let mut data_l = data.lock().await;
+
+                db::model::add_peer(&data_l.db, &Peer {
+                    id_left: node.info.id.clone(),
+                    id_right: peer.peer.clone(),
+                }).await.unwrap();
+
+                db::model::add_node_addr(&data_l.db, &NodeAddr {
+                    id_node: peer.peer.clone(),
+                    addr: peer.addr.clone(),
+                }).await.unwrap();
+
+                // match v {
+                //     None => {
+                //
+                //     }
+                //     Some(true_id) => {
+                //         db::model::add_peer(&data_l.db, &Peer {
+                //             id_left: node.info.id.clone(),
+                //             id_right: true_id.clone(),
+                //         }).await.unwrap();
+                //
+                //         db::model::add_node_addr(&data_l.db, &NodeAddr {
+                //             id_node: peer.peer.clone(),
+                //             addr: true_id.clone(),
+                //         }).await.unwrap();
+                //     }
+                // }
+            }
             Err(e) => {
                 println!("! {}", e);
             }
@@ -355,12 +388,13 @@ async fn read_node_peers(data: Arc<Mutex<Data>>, node: &NodeData) {
     }
 }
 
-async fn node_scan_worker(data: Arc<Mutex<Data>>) {
+async fn node_scan_worker(data: Arc<Mutex<Data>>, i: u16) {
     let rx = data.lock().await.to_scan_rx.clone();
 
     loop {
         match rx.try_recv() {
             Ok(v) => {
+                println!("{} => {}", i, v.addr);
                 read_node_objects(data.clone(), &v).await;
                 read_node_peers(data.clone(), &v).await;
 
@@ -440,10 +474,10 @@ async fn main() {
 
     let mut handles = Vec::new();
 
-    for _ in 0..64 {
+    for i in 0..64 {
         let d = data.clone();
         let handle = tokio::spawn(async move {
-            node_scan_worker(d).await;
+            node_scan_worker(d, i).await;
         });
         handles.push(handle);
     }
