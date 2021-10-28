@@ -17,3 +17,5 @@ sqlx = { version = "0.5", features = ["runtime-tokio-native-tls", "postgres", "c
 anyhow = "1.0"
 rand = "0.8"
 openssl = { version = '0.10', features = ["vendored"] }
+futures = "0.3"
+async-channel = "1.6"

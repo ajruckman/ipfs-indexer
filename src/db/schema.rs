@@ -4,6 +4,14 @@ pub struct Node {
     pub id: String,
     pub seen_first: DateTime<Utc>,
     pub seen_last: DateTime<Utc>,
+    pub scan_last: Option<DateTime<Utc>>,
+    pub public_addr: Option<String>,
+}
+
+pub struct NodeUpdate {
+    pub id: String,
+    pub seen_last: DateTime<Utc>,
+    pub scan_last: Option<DateTime<Utc>>,
     pub public_addr: Option<String>,
 }
 

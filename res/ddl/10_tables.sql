@@ -11,6 +11,7 @@ CREATE TABLE node
     id          VARCHAR(64) NOT NULL,
     seen_first  timestamptz NOT NULL,
     seen_last   timestamptz NOT NULL,
+    scan_last   timestamptz,
     public_addr VARCHAR(128),
 
     CONSTRAINT node_pk PRIMARY KEY (id)

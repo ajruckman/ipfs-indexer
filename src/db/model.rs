@@ -1,6 +1,32 @@
-use sqlx::{Pool, Postgres, query};
+use std::convert::TryFrom;
+use std::time::Duration;
 
-use crate::db::schema::{Node, NodeAddr, NodeObjectPin, Object, Peer};
+use futures::TryStreamExt;
+use sqlx::{Pool, Postgres, query};
+use sqlx::postgres::types::PgInterval;
+
+use crate::db::schema::{Node, NodeAddr, NodeObjectPin, NodeUpdate, Object, Peer};
+
+pub async fn get_node(
+    conn: &Pool<Postgres>,
+    id: &str,
+) -> anyhow::Result<Option<Node>> {
+    let r = query!("SELECT id, seen_first, seen_last, scan_last, public_addr FROM node WHERE id=$1",
+        id)
+        .fetch_optional(conn)
+        .await?;
+
+    Ok(match r {
+        Some(r) => Some(Node {
+            id: r.id,
+            seen_first: r.seen_first,
+            seen_last: r.seen_last,
+            scan_last: r.scan_last,
+            public_addr: r.public_addr,
+        }),
+        _ => None,
+    })
+}
 
 pub async fn add_node(
     conn: &Pool<Postgres>,
@@ -10,6 +36,20 @@ pub async fn add_node(
             VALUES ($1, $2, $3, $4)
             ON CONFLICT ON CONSTRAINT node_pk DO UPDATE SET seen_last=$3, public_addr=$4",
         node.id, node.seen_first, node.seen_last, node.public_addr)
+        .execute(conn)
+        .await?;
+
+    Ok(())
+}
+
+pub async fn update_node(
+    conn: &Pool<Postgres>,
+    update: &NodeUpdate,
+) -> anyhow::Result<()> {
+    query!("UPDATE node
+            SET seen_last=$1, scan_last=$2, public_addr=$3
+            WHERE id=$4",
+        update.seen_last, update.scan_last, update.public_addr, update.id)
         .execute(conn)
         .await?;
 
@@ -94,4 +134,32 @@ pub async fn add_node_object_pin(
         .await?;
 
     Ok(())
+}
+
+pub async fn get_unscanned_nodes(
+    conn: &Pool<Postgres>,
+    min_time_since_last: Duration,
+) -> anyhow::Result<Vec<Node>> {
+    let interval = PgInterval::try_from(min_time_since_last).unwrap();
+
+    let mut stream = query!("SELECT * FROM node
+            WHERE NOW() - scan_last > $1",
+        interval)
+        .map(|row| {
+            Node {
+                id: row.id,
+                seen_first: row.seen_first,
+                seen_last: row.seen_last,
+                scan_last: row.scan_last,
+                public_addr: row.public_addr,
+            }
+        })
+        .fetch(conn);
+
+    let mut result = Vec::new();
+    while let Some(row) = stream.try_next().await? {
+        result.push(row);
+    }
+
+    Ok(result)
 }
